@@ -1,0 +1,36 @@
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+;Scenario3 : Risk Culture : persons being infected avoid travelling, with a probability p 0 < p < 1 
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+; La Culture du risque est une mesure de prévention qui incite les voyageurs infectés à moins/pas se déplacer. 
+; Le taux de mobilité $g_i$ est diminué d'une proportion définie sur l'interface ($RiskCulture-Probability$). 
+; Cette stratégie est activée ou non en début de simulation et s'applique sur tous les noeuds de la même façon, 
+; et réduit donc le taux de mobilité de tous les infectés du réseau. 
+
+
+to update-riskculture-state
+  ask nodes 
+  [
+     set RCgi gi * riskculture_probability
+     set gi RCgi  
+  ]
+end
+
+
+; Le coût de la Culture du risque correspond à la différence entre les infectés qui auraient dû partir sans 
+; cette mesure, et ceux qui ne sont effectivement partis : (gi - RCgi ). 
+
+
+to compute-RCCost
+ ask nodes
+ [
+    set RCCost RCCost + ( ( sum [mij] of my-out-links with [[quarantine?] of end2 = false and [avoidance?] of end2 = false] ) * currentI * (initial-gi - RCgi ) ) 
+ ]
+end
+  
+  
+to compute-RCCostTotal
+   set RCCostTotal sum [RCCost] of nodes
+end

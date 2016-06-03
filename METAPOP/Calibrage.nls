@@ -1,0 +1,66 @@
+
+to cK [coef]
+  set tempS calibS + coef * calibKS
+  set tempI calibI + coef * calibKI
+  set tempR calibR + coef * calibKR
+  set nxtKS (- beta / ( TotalS + TotalI + TotalR ) ) * tempI * tempS
+  set nxtKI ( beta / ( TotalS + TotalI + TotalR ) ) * tempI * tempS - alpha * tempI
+  set nxtKR alpha * tempI
+end
+
+to sK [coef] 
+  set nxtS nxtS + coef * nxtKS
+  set nxtI nxtI + coef * nxtKI
+  set nxtR nxtR + coef * nxtKR
+  set calibKS nxtKS 
+  set calibKI nxtKI
+  set calibKR nxtKR
+end
+
+;;problème : calibI est toujours égal à zéro
+
+to RKstep
+   let epsilon 1
+  while [calibI >= epsilon]
+  [
+      (foreach (list 0 (1 / 2) (1 / 2) 1) (list (1 / 6) (1 / 3) (1 / 3) (1 / 6)) [
+      cK ?1 * deltaT
+      sK ?2 * deltaT
+      ])
+    set calibS nxtS
+    set calibI nxtI
+    set calibR nxtR
+    tick ; incrémentation de l'horloge
+  ]
+   
+    set Calibration-Duration ticks      ; duration of epidemy : epidemics lasts until there is no more infected persons
+  
+end
+
+
+to do-calibrate
+
+ set TotalS NB_Nodes * SInit
+ set TotalI 1 
+ set TotalR 0
+ set Total-Population TotalS + TotalI + TotalR
+ set Epidemy-Duration 60
+ set calibS TotalS
+ set calibI 1
+ set calibR 0
+ set nxtS calibS  
+ set nxtI calibI  
+ set nxtR calibR 
+ RKstep
+
+ set Total-Mobile-Population Total-Population * mobility-rate * epidemy-duration
+ set Mobile-Population-By-Step round (Total-Mobile-Population / Calibration-Duration)
+
+
+ask nodes [
+  set gs Mobile-Population-By-Step / Total-Population
+  set gi Mobile-Population-By-Step / Total-Population
+  set gr Mobile-Population-By-Step / Total-Population
+  ]
+end
+

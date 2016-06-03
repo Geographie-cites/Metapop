@@ -1,0 +1,77 @@
+
+; Node procedure needed to compute RK4 : first step of the RK4 global method
+; SIR model
+
+to calcK [coef]
+  set tmpS currentS + coef * currentKS
+  set tmpI currentI + coef * currentKI
+  set tmpR currentR + coef * currentKR
+  set nextKS (- beta / (tmpS + tmpI + tmpR)) * tmpI * tmpS
+  set nextKI (beta / (tmpS + tmpI + tmpR)) * tmpI * tmpS - alpha * tmpI
+  set nextKR alpha * tmpI
+end
+
+; Node procedure needed to compute RK4 : second step of the RK4 global method
+
+to RK-update
+ 
+ ; Outflow : sum of mij for each out-link of the nodes  
+ ; this outflow is multiplied by the population of the nodes later
+ 
+  let sumOutS 0
+  let sumOutI 0
+  let sumOutR 0
+  
+    ask my-out-links [
+    set sumOutS sumOutS + mij
+    set sumOutI sumOutI + mij
+    set sumOutR sumOutR + mij
+    ]
+    
+  ; Inflow : sum of mij * gs * tmpS, mij * gi * tmpI, mij * gr * tmpR for each in-link
+  ; where tmpS, tmpI and tmpR are the number of S, I, R of the source node during the RK4 procedure 
+    
+  let sumInS 0
+  let sumInI 0
+  let sumInR 0
+  
+  ask in-link-neighbors [
+    let mi [Mij] of out-link-to myself
+    set sumInS sumInS + mobility-rate * tmpS * mi
+    set sumInI sumInI + mobility-rate * tmpI * mi
+    set sumInR sumInR + mobility-rate * tmpR * mi
+  ]
+  
+  ; Update of the number of S, I and R in each node, taking into account outflows and inflows
+   
+  set nextKS nextKS - sumOutS * mobility-rate * tmpS + sumInS 
+  set nextKI nextKI - sumOutI * mobility-rate * tmpI + sumInI
+  set nextKR nextKR - sumOutR * mobility-rate * tmpR + sumInR  
+end
+
+; Last step of RK4 method
+
+to stepK [coef] 
+  set nextS nextS + coef * nextKS
+  set nextI nextI + coef * nextKI
+  set nextR nextR + coef * nextKR
+  set currentKS nextKS 
+  set currentKI nextKI
+  set currentKR nextKR
+end
+
+; All steps of RK4 methods to compute the new values of S,I and R in nodes
+
+to RKstepNetwork
+  (foreach (list 0 (1 / 2) (1 / 2) 1) (list (1 / 6) (1 / 3) (1 / 3) (1 / 6)) 
+   [
+    ask nodes [calcK ?1 * deltaT]
+    ask nodes [RK-update]
+    ask nodes [stepK ?2 * deltaT]
+  ])
+  ask nodes [
+    set currentS nextS
+    set currentI nextI
+    set currentR nextR
+  ]
+end

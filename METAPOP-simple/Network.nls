@@ -1,0 +1,256 @@
+directed-link-breed [node-links node-link]
+breed [nodes node]
+
+;*****************
+;nodes-own
+;*****************
+
+nodes-own 
+[
+  currentS currentI currentR	    	;infectious state of population of the node
+  nextS nextI nextR		              ;infectious state of population of the node
+  currentKS currentKI currentKR		  ;temporary steps of values of S, I and R during RK4
+  nextKS nextKI nextKR		          ;temporary steps of values of S, I and R during RK4
+  tmpS tmpI tmpR		                ;temporary steps of values of S, I and R during RK4
+  infected?
+]
+
+;*****************
+;links-own
+;*****************
+
+links-own 
+[ 
+  mij 				                      ; proportion of Mi exit flow going to j
+] 
+
+;*****************
+;setup-globals
+;*****************
+
+to setup-globals
+  set reference-node node 0	         ; reference node is the upper node
+  set transparency 140
+end
+
+;*****************
+;setup-network
+;*****************
+
+to setup-network
+ setup-nodes
+ setup-links
+ setup-globals 
+ set-transparency 
+end
+
+;*****************
+;setup-nodes
+;*****************
+
+to initialize-your-state
+   set currentS Population-on-nodes
+   set currentI 0 
+   set currentR 0  
+   set nextS currentS  
+   set nextI currentI  
+   set nextR currentR 
+end
+
+to infect-one-guy  ; to infect one person on all the network
+    ask one-of nodes 
+    [
+      set currentI 1 
+      set currentS currentS - 1
+      set nextI currentI
+      set nextS currentS
+      set shape "star"
+    ]
+end
+
+to setup-nodes
+  create-ordered-nodes NB_nodes 
+  [
+    fd 8
+    set color one-of possible-colors * 5
+    set shape "circle"
+    initialize-your-state
+  ]
+  display-nodes
+end
+
+to display-nodes
+  ask nodes 
+  [
+   set size ( 0.1 + ln (1 + currentI) ) / ( 0.2 * NB_Nodes )
+  ]
+end
+
+to set-transparency
+  ask nodes
+  [
+  ;; since turtle colors might be either numbers (NetLogo colors) or lists
+  ;; (RGB or RGBA colors) make sure to handle both cases when changing the
+  ;; transparency
+  ifelse is-list? color
+  ;; list might either have 3 or 4 member since RGB and RGBA colors
+  ;; are allowed, so you can't just replace or add an item at the
+  ;; end of the list.  So, we take the first 3 elements of the list
+  ;; and add the alpha to the end
+  [ set color lput transparency sublist color 0 3 ]
+  ;; to get the RGB equivalent of a NetLogo color we
+  ;; use EXTRACT-RGB and then add alpha to the end
+  [ set color lput transparency extract-rgb color ]
+  ]
+end
+
+
+;*****************
+;setup-links
+;*****************
+
+to setup-links
+  set-default-shape node-links "links arn"
+ 
+    if Network-Topology = "Random"
+    [ask nodes 
+      [
+       Network-Random
+      ]
+    ]
+    if Network-Topology = "Complete"
+      [ask nodes 
+        [
+          Network-Complete
+        ]
+      ]
+    if Network-Topology = "Chain"
+      [ask nodes 
+        [
+          Network-Chain
+        ]
+      ]
+    if Network-Topology = "Regular"
+    [ask nodes 
+      [
+        Network-Regular Regular-Net-Order
+      ]
+    ]
+    if Network-Topology = "Smallworld"
+    [ask nodes 
+          [
+            Network-Regular 2
+          ]
+    Network-smallworld  
+  ]
+ 
+  define-links-weights
+  label-links
+end
+
+
+to Network-Random
+  create-node-links-to n-of ( int( ( NB_Nodes - 1 ) * random-degree ) ) other nodes
+  [
+     set color [color] of end1
+  ]
+end
+
+to Network-Complete
+  create-node-links-to other nodes
+  [
+    set color [color] of end1
+  ]
+end
+
+
+to Network-Chain
+  if who < NB_Nodes - 1 
+  [
+     create-node-link-to node ( who + 1 )
+     [
+       set color [color] of end1
+     ]
+  ]
+  if who = NB_Nodes - 1
+  [
+    create-node-link-to node 0
+    [
+       set color [color] of end1
+    ]
+  ]
+end
+
+
+
+;;Regular Network
+
+to Network-Regular [order]
+  while [ any? nodes with [count out-link-neighbors < Order]]
+  [
+    ask one-of nodes with [count out-link-neighbors < Order]
+    [
+      create-node-links-to min-n-of Order other nodes [distance-nowrap myself] 
+      [
+         set color [color] of end1
+      ]
+    ]
+  ]
+end
+
+;;Smallworld Network
+
+to Network-smallworld
+    ask links [
+
+      ;; whether to rewire it or not?
+      if (random-float 1) < SmallWorld_Probability ;rewiring-probability
+      [
+        ;; "a" remains the same
+        let node1 end1
+        ;; if "a" is not connected to everybody
+        if [ count link-neighbors ] of end1 < (count nodes - 1)
+        [
+          ;; find a node distinct from node1 and not already a neighbor of node1
+          let node2 one-of nodes with [ (self != node1) and (not link-neighbor? node1) ]
+          ;; wire the new edge
+          ask node1 [ create-node-link-to node2 ]
+
+        ]
+      ]
+     
+    ]
+
+end
+
+;*****************
+;define-links-weights
+;*****************
+
+to define-links-weights
+ ask nodes
+ [
+   let nb-neigbours count my-out-links
+   let links-subset my-out-links
+     ask my-out-links 
+     [
+       set mij (1 / nb-neigbours)
+     ] 
+   ]
+end
+
+
+;*****************
+;label-links
+;*****************
+
+to label-links
+  if count nodes < 7 
+  [
+    ask links
+    [
+      set label precision mij 2
+    ]
+  ]
+end
+

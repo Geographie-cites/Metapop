@@ -1,0 +1,125 @@
+
+;---------------------------------------------------------------------------------------------------------------------------------------------------
+;Scenario2 : Avoidance : Agents avoid as destination cities for which I / (S + I + R) >= Avoidance_threshold. Therefore, only inflows are concerned
+;---------------------------------------------------------------------------------------------------------------------------------------------------
+
+; La mise en évitement d'un noeud se fait lorsque le taux d'infecté du noeud dépasse stricteent un certain seuil : avoidance_threshold 
+
+to update-avoidance-state
+  ask nodes 
+  [
+    ifelse Avoidance?
+    [
+      if currentI / (currentS + currentI + currentR) <= Avoidance_threshold 
+      [
+        remove-avoidance
+      ]
+    ]
+    [
+      if currentI / (currentS + currentI + currentR) > Avoidance_threshold
+      [
+        install-avoidance
+      ]
+    ]
+  ]
+  label-links
+end
+ 
+ 
+
+to install-avoidance
+ 
+  set Avoidance? true   
+  
+  set shape "triangle"  
+  
+  if any? in-link-neighbors with [not quarantine?]
+  [
+    ask in-link-neighbors with [not quarantine?]
+    [
+       node-updates-out-stream
+       
+       if not redistribution? 
+       [
+         node-updates-g-no-redistribution  
+       ]
+    ]
+  ]
+end
+  
+to remove-avoidance
+  let target-node self 
+  set Avoidance? false 
+  ifelse quarantine?
+  [
+    set shape "square"
+  ]
+  [
+    set shape "circle"
+  ]
+  
+  ask in-link-neighbors with [not quarantine?] 
+  [
+    node-updates-out-stream
+    
+    if not redistribution? 
+    [
+      node-updates-g-no-redistribution  
+    ]
+  ]
+end
+  
+
+
+; Pour chaque noeud, on calcule ce qui ne part pas :(rappelons que si un noeud est en évitement, il n'y a aucune perte au départ car l'évitement ne concerne que l'entrée )
+; * Pour un noeud :
+;    -- S'il n'a pas de voisins sortants en avoidance, on ne calcule rien
+;    -- S'il a des voisins en avoidance (mais pas en quarantaine pour éviter les doublons) :
+;       - S'il y a redistribution et qu'il y a un/des voisins(s) NON en avoidance, il n'y a pas de perte de traffic 
+;       - S'il y a reditribution mais que tous les voisins sont en avoidance, la perte de traffic correspond à tout le flux sortant du noeud
+;       - S'il n'y a pas redistribution, la perte de traffic correspond à la difference entre le traffic 
+;         effectivement parti (avec la réduction du gs) et le traffic initial (avec initial-gs)
+
+
+to compute-ACostOutNodes
+ ask nodes with [not quarantine?]
+ [
+     if any? out-link-neighbors with [avoidance? and not quarantine?]
+     [
+       ifelse redistribution?
+       [
+         compute-ARedistributionCost
+       ]
+       [
+         compute-ANoRedistributionCost
+       ]
+   ]
+ ]
+end
+
+to compute-ARedistributionCost
+  if all? out-link-neighbors [avoidance?] 
+  [
+     set Acost ACost + initial-gs * CurrentS + initial-gi * currentI + initial-gr * CurrentR
+  ]
+end
+
+to compute-ANoRedistributionCost
+
+      set gs initial-gs - ( sum [initial-mij] of my-out-links with [[avoidance?] of end2 = true ] ) * initial-gs 
+      set gi initial-gi - ( sum [initial-mij] of my-out-links with [[avoidance?] of end2 = true ] ) * initial-gi 
+      set gr initial-gr - ( sum [initial-mij] of my-out-links with [[avoidance?] of end2 = true ] ) * initial-gr 
+         
+      set ACost ACost + (initial-gs - gs) *  currentS + (initial-gi - gi) *  currentI + (initial-gr - gr) *  currentR 
+end
+
+
+to compute-ACostTotal
+  set ACostTotal sum [ACost] of nodes
+end
+
+
+
+
+
+

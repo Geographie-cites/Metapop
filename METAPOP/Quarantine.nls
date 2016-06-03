@@ -1,0 +1,208 @@
+
+;*****************
+;Define Scenarios as dynamic allocation of weights in network
+;*****************
+
+
+; Trois stratégies pour contrôler l'épidémie au niveau global sont implémentées, affectant diversement les flux de population dans le réseau.\\
+; La mise en place d'une mesure de contrôle de la maladie engendre des pertes économiques au niveau des noeuds ciblés par la mesure et parfois même au niveau de leurs noeuds voisins. Ces pertes peuvent être de deux ordres, selon la mesure :
+; Coûts lié aux flux non reçus (proportionnel aux flux de population non reçus)
+; Coûts lié aux flux non émis (proportionnel aux flux de population non émis)
+; Les éventuels gains économiques liés au report de trafic ne sont pas mesurés.
+
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+;Scenario1 : Quarantine : if a city satisifies : I / (S + I + R) >= Quarantine_threshold, then inflows or outflows are no longer possible for this city 
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+; La mise en quarantine d'un noeud a lieu lorsque le taux d'infectés du noeud dépasse (strictement) un certain seuil (quarantine-threshold).
+; En cas de mise en quarantaine d'une ville, il n'y a aplus de flux entrants et plus de flux sortants.
+; Les flux qui ne peuvent donc pas entrer peuvent être redistribués (redistribution?) ou non.
+; Dans le cas où il ne sont pas redistribués, il faut réduire le taux de mobilité des voisins qui ne peuvent plus émettre autant de voyageurs qu'initialement prévu
+
+
+to update-quarantine-state
+  ask nodes 
+  [
+    ifelse quarantine? 
+    [
+      if currentI / (currentS + currentI + currentR) <= Quarantine_threshold  
+      [
+        remove-quarantine
+      ]
+    ]
+    [ 
+      if currentI / (currentS + currentI + currentR) > Quarantine_threshold 
+      [ 
+        install-quarantine
+      ]
+    ]
+  ]
+  label-links 
+end
+
+
+to install-quarantine
+  
+  set quarantine? true   
+  
+  set shape "square"   
+
+  if any? out-link-neighbors 
+  [
+    ask my-out-links 
+    [
+      set mij 0    
+    ] 
+  ]
+  
+  if any? in-link-neighbors with [not quarantine?]
+  [
+    ask in-link-neighbors with [not quarantine?]
+    [
+       node-updates-out-stream
+       
+       if not redistribution? 
+       [
+         node-updates-g-no-redistribution  
+       ]
+    ]
+  ]
+end
+
+  
+to remove-quarantine
+
+  set quarantine? false 
+  
+  ifelse avoidance?
+  [
+    set shape "triangle"
+  ]
+  [
+    set shape "circle"
+  ] 
+  
+  node-updates-out-stream
+  
+  if not redistribution? 
+  [
+    node-updates-g-no-redistribution  
+  ]
+  
+  if any? in-link-neighbors with [not quarantine?]
+  [
+    ask in-link-neighbors with [not quarantine?] 
+    [
+      node-updates-out-stream
+    
+      if not redistribution? 
+      [
+        node-updates-g-no-redistribution  
+      ]
+    ]
+  ]
+end
+
+
+to node-updates-g-no-redistribution 
+  
+  set gs initial-gs - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true or [avoidance?] of end2 = true] ) * initial-gs  
+  set gi initial-gi - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true or [avoidance?] of end2 = true] ) * initial-gi 
+  set gr initial-gr - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true or [avoidance?] of end2 = true] ) * initial-gr
+     
+end
+
+
+to node-updates-out-stream
+  ifelse any? out-link-neighbors with [not quarantine? and not avoidance?] and not quarantine?
+  [
+    let mij-to-redistribute sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true or [avoidance?] of end2 = true]   
+           
+    let neighbr count out-link-neighbors with [not quarantine? and not avoidance?]     
+      
+    ask my-out-links with [[quarantine?] of end2 = true or [avoidance?] of end2 = true]
+    [
+       set mij 0
+    ]
+      
+    ask my-out-links with [[quarantine?] of end2 = false and [avoidance?] of end2 = false]
+    [
+       set mij initial-mij + ( mij-to-redistribute /  neighbr )  
+    ]   
+  ]
+  [
+    ask my-out-links 
+    [
+      set mij 0
+    ]
+  ]
+end
+
+
+; Pour chaque noeud, on calcule ce qui ne part pas :
+; * Si le noeud est en quarantaine, la perte de traffic correspond à tout le flux sortant
+; * Si le noeud n'est pas en quarantaine
+;    -- S'il n'a pas de voisins sortants en quarantaine ou en avoidance, on ne calcule rien
+;    -- S'il a des voisins en quarantaine ou en avoidance :
+;       - S'il y a redistribution et qu'il y a un/des voisins(s) NON en quarantaine, il n'y a pas de perte de traffic 
+;       - S'il y a reditribution mais que tous les voisins sont en quarantaine, la perte de traffic correspond à tout le flux sortant du noeud
+;       - S'il n'y a pas redistribution, la perte de traffic correspond à la difference entre le traffic 
+;         effectivement parti (avec la réduction du gs) et le traffic initial (avec initial-gs)
+
+
+to compute-QCostOutNodes
+ ask nodes
+ [
+   ifelse quarantine?
+   [
+     compute-QCostOut
+   ]
+   [
+     if any? out-link-neighbors with [quarantine?]
+     [
+       ifelse redistribution?
+       [
+         compute-QRedistributionCost
+       ]
+       [
+         compute-QNoRedistributionCost
+       ]
+     ]
+   ]
+ ]
+end
+
+to compute-QCostOut
+   if any? out-link-neighbors 
+   [
+     set QCost QCost + initial-gs * CurrentS + initial-gi * currentI + initial-gr * CurrentR  
+   ]
+end
+
+to compute-QRedistributionCost
+  if all? out-link-neighbors [quarantine?] 
+  [
+     set Qcost QCost + initial-gs * CurrentS + initial-gi * currentI + initial-gr * CurrentR
+  ]
+end
+
+to compute-QNoRedistributionCost
+
+      set gs initial-gs - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true ] ) * initial-gs 
+      set gi initial-gi - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true ] ) * initial-gi 
+      set gr initial-gr - ( sum [initial-mij] of my-out-links with [[quarantine?] of end2 = true ] ) * initial-gr 
+         
+      set QCost QCost + (initial-gs - gs) *  currentS + (initial-gi - gi) *  currentI + (initial-gr - gr) *  currentR 
+end
+
+
+to compute-QCostTotal
+  set QCostTotal sum [QCost] of nodes
+end
+
+
+
+
+
